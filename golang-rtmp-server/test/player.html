@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RTMP to HLS Test Player</title>
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+        }
+        .video-container {
+            margin: 20px 0;
+            text-align: center;
+        }
+        video {
+            max-width: 100%;
+            height: auto;
+            border-radius: 8px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+        }
+        .controls {
+            margin: 20px 0;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 5px;
+        }
+        .stream-input {
+            width: 100%;
+            padding: 10px;
+            margin: 10px 0;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        .btn {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            margin: 5px;
+        }
+        .btn:hover {
+            background: #0056b3;
+        }
+        .btn:disabled {
+            background: #6c757d;
+            cursor: not-allowed;
+        }
+        .status {
+            margin: 10px 0;
+            padding: 10px;
+            border-radius: 4px;
+            font-weight: bold;
+        }
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .status.info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+        .stream-list {
+            margin: 20px 0;
+        }
+        .stream-item {
+            padding: 10px;
+            margin: 5px 0;
+            background: #f8f9fa;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .stream-item:hover {
+            background: #e9ecef;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>RTMP to HLS Test Player</h1>
+        
+        <div class="controls">
+            <h3>Stream Configuration</h3>
+            <input type="text" id="streamUrl" class="stream-input" 
+                   placeholder="Enter stream URL (e.g., http://localhost:8080/hls/live/mystream/playlist.m3u8)"
+                   value="http://localhost:8080/hls/live/test/playlist.m3u8">
+            <br>
+            <button id="loadBtn" class="btn">Load Stream</button>
+            <button id="stopBtn" class="btn" disabled>Stop Stream</button>
+            <button id="refreshBtn" class="btn">Refresh Streams</button>
+        </div>
+
+        <div id="status" class="status info">
+            Ready to load stream. Make sure the RTMP server is running.
+        </div>
+
+        <div class="video-container">
+            <video id="video" controls></video>
+        </div>
+
+        <div class="stream-list">
+            <h3>Available Streams</h3>
+            <div id="streamsList">
+                <div class="stream-item">No streams available</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const video = document.getElementById('video');
+        const streamUrl = document.getElementById('streamUrl');
+        const loadBtn = document.getElementById('loadBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const refreshBtn = document.getElementById('refreshBtn');
+        const status = document.getElementById('status');
+        const streamsList = document.getElementById('streamsList');
+
+        let hls = null;
+
+        function updateStatus(message, type = 'info') {
+            status.textContent = message;
+            status.className = `status ${type}`;
+        }
+
+        function loadStream() {
+            const url = streamUrl.value.trim();
+            if (!url) {
+                updateStatus('Please enter a stream URL', 'error');
+                return;
+            }
+
+            if (hls) {
+                hls.destroy();
+                hls = null;
+            }
+
+            if (Hls.isSupported()) {
+                hls = new Hls();
+                hls.loadSource(url);
+                
+                hls.on(Hls.Events.MANIFEST_PARSED, function() {
+                    video.play();
+                    updateStatus('Stream loaded successfully', 'success');
+                    loadBtn.disabled = true;
+                    stopBtn.disabled = false;
+                });
+
+                hls.on(Hls.Events.ERROR, function(event, data) {
+                    console.error('HLS error:', data);
+                    updateStatus(`Stream error: ${data.details}`, 'error');
+                    loadBtn.disabled = false;
+                    stopBtn.disabled = true;
+                });
+
+                hls.attachMedia(video);
+            } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+                video.src = url;
+                video.addEventListener('loadedmetadata', function() {
+                    video.play();
+                    updateStatus('Stream loaded successfully (native HLS)', 'success');
+                    loadBtn.disabled = true;
+                    stopBtn.disabled = false;
+                });
+            } else {
+                updateStatus('HLS is not supported in this browser', 'error');
+            }
+        }
+
+        function stopStream() {
+            if (hls) {
+                hls.destroy();
+                hls = null;
+            }
+            video.src = '';
+            updateStatus('Stream stopped', 'info');
+            loadBtn.disabled = false;
+            stopBtn.disabled = true;
+        }
+
+        async function refreshStreams() {
+            try {
+                const response = await fetch('http://localhost:8080/api/v1/streams');
+                const data = await response.json();
+                
+                if (data.streams && data.streams.length > 0) {
+                    streamsList.innerHTML = '';
+                    data.streams.forEach(stream => {
+                        const streamItem = document.createElement('div');
+                        streamItem.className = 'stream-item';
+                        streamItem.innerHTML = `
+                            <strong>${stream.id}</strong><br>
+                            Status: ${stream.is_active ? 'Active' : 'Inactive'}<br>
+                            Started: ${new Date(stream.start_time).toLocaleString()}
+                        `;
+                        streamItem.onclick = () => {
+                            const url = `http://localhost:8080/hls/${stream.app_name}/${stream.stream_name}/playlist.m3u8`;
+                            streamUrl.value = url;
+                        };
+                        streamsList.appendChild(streamItem);
+                    });
+                } else {
+                    streamsList.innerHTML = '<div class="stream-item">No active streams</div>';
+                }
+            } catch (error) {
+                console.error('Failed to fetch streams:', error);
+                streamsList.innerHTML = '<div class="stream-item">Failed to load streams</div>';
+            }
+        }
+
+        loadBtn.addEventListener('click', loadStream);
+        stopBtn.addEventListener('click', stopStream);
+        refreshBtn.addEventListener('click', refreshStreams);
+
+        video.addEventListener('error', function() {
+            updateStatus('Video playback error', 'error');
+        });
+
+        refreshStreams();
+    </script>
+</body>
+</html> 

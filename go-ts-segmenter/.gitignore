@@ -1,0 +1,10 @@
+bin/
+logs/
+results/
+fixture/test.ts
+.DS_Store
+.vscode/
+glide.lock
+vendor/
+/secrets/*
+!/secrets/*.example

@@ -1,0 +1,27 @@
+server:
+  http_port: 8080
+
+rtmp:
+  port: 1935
+
+hls:
+  output_dir: "./output"
+  segment_duration: 4
+  playlist_window: 10
+
+ffmpeg:
+  binary_path: "ffmpeg"
+  params:
+    video_codec: "libx264"
+    audio_codec: "aac"
+    video_bitrate: "1000k"
+    audio_bitrate: "128k"
+    resolution: "1280x720"
+    fps: "30"
+
+logging:
+  level: "info"
+
+metrics:
+  enabled: true
+  port: 9090 

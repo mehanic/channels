@@ -1,0 +1,13 @@
+github.com/SmartBrave/Athena/broadcast v0.0.0-20220121140014-e46f7e4c2957 h1:JYwxEJnVLABV1EdJt+Ng/IcVhvwjCebk6ra9ymxB1Ik=
+github.com/SmartBrave/Athena/broadcast v0.0.0-20220121140014-e46f7e4c2957/go.mod h1:TU/SZC8BLjnyPIj49tmmFP6DEwS96DfvNggGfySqB28=
+github.com/SmartBrave/Athena/easyerrors v0.0.0-20210909122853-6ce6ff3d50c3/go.mod h1:5yocT+/Adt/zT6V4Wqqx6z5LfIa4LAIZt+5PhhsqORc=
+github.com/SmartBrave/Athena/easyerrors v0.0.0-20211208130222-74bac816a320 h1:y5VDBsMZ5aMFtioiVLTXhUcXv84QCIngHTQx1HXBp88=
+github.com/SmartBrave/Athena/easyerrors v0.0.0-20211208130222-74bac816a320/go.mod h1:5yocT+/Adt/zT6V4Wqqx6z5LfIa4LAIZt+5PhhsqORc=
+github.com/SmartBrave/Athena/easyio v0.0.0-20211208130222-74bac816a320 h1:tLXA0pP5yHkfqYOuKShDo/Bx1+DOcd5K84zi1oPCNKM=
+github.com/SmartBrave/Athena/easyio v0.0.0-20211208130222-74bac816a320/go.mod h1:V/WAj02Va6hgVllSHoxNxRSEVmkizeTXusSPxjrCMeg=
+github.com/fatih/structs v1.1.0 h1:Q7juDM0QtcnhCpeyLGQKyg4TOIghuNXrkL32pHAUMxo=
+github.com/fatih/structs v1.1.0/go.mod h1:9NiDSp5zOcgEDl+j00MP/WkGVPOlPRLejGD8Ga6PJ7M=
+github.com/goinggo/mapstructure v0.0.0-20140717182941-194205d9b4a9 h1:wqckanyE9qc/XnvnybC6SHOb8Nyd62QXAZOzA8twFig=
+github.com/goinggo/mapstructure v0.0.0-20140717182941-194205d9b4a9/go.mod h1:64ikIrMv84B+raz7akXOqbF7cK3/OQQ/6cClY10oy7A=
+github.com/pkg/errors v0.9.1 h1:FEBLx1zS214owpjy7qsBeixbURkuhQAwrK5UwLGTwt4=
+github.com/pkg/errors v0.9.1/go.mod h1:bwawxfHBFNV+L2hUp1rHADufV3IMtnDRdf1r5NINEl0=

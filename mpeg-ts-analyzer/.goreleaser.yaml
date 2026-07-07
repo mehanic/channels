@@ -1,0 +1,66 @@
+version: 1
+
+project_name: mpeg-ts-analyzer
+
+before:
+  hooks:
+    # You may remove this if you don't use go modules.
+    - go mod tidy
+    # you may remove this if you don't need go generate
+    - go generate ./...
+
+builds:
+  - env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - windows
+      - darwin
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+
+archives:
+  - format: tar.gz
+    # this name template makes the OS and Arch compatible with the results of `uname`.
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- title .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else if eq .Arch "386" }}i386
+      {{- else }}{{ .Arch }}{{ end }}
+      {{- if .Arm }}v{{ .Arm }}{{ end }}
+    # use zip for windows archives
+    format_overrides:
+      - goos: windows
+        format: zip
+
+nfpms:
+  - package_name: mpeg-ts-analyzer
+    homepage: "https://github.com/small-teton/mpeg-ts-analyzer"
+    description: "An analyzer for MPEG-2 Transport Stream (ISO/IEC 13818-1)"
+    license: "Apache-2.0"
+    maintainer: "Masahiko Matsuura"
+    formats:
+      - deb
+      - rpm
+      - apk
+
+brews:
+  - repository:
+      owner: small-teton
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    homepage: "https://github.com/small-teton/mpeg-ts-analyzer"
+    description: "An analyzer for MPEG-2 Transport Stream (ISO/IEC 13818-1)"
+    license: "Apache-2.0"
+    install: |
+      bin.install "mpeg-ts-analyzer"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"

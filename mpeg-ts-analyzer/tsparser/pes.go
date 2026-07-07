@@ -1,0 +1,429 @@
+package tsparser
+
+import (
+	"fmt"
+
+	"github.com/cockroachdb/errors"
+)
+
+// Pes Packetized Elementary Stream.
+type Pes struct {
+	pid               uint16
+	continuityCounter uint8
+	buf               []byte
+	pos               int64
+	newBitReader      func() bitReader
+	prevPcr           uint64
+	nextPcr           uint64
+	prevPcrPos        int64
+	nextPcrPos        int64
+
+	packetStartCodePrefix            uint32
+	streamID                         uint8
+	pesPacketLength                  uint16
+	pesScramblingControl             uint8
+	pesPriority                      uint8
+	dataAlignmentIndicator           uint8
+	copyright                        uint8
+	originalOrCopy                   uint8
+	ptsDtsFlags                      uint8
+	escrFlag                         uint8
+	esRateFlag                       uint8
+	dsmTrickModeFlag                 uint8
+	additionalCopyInfoFlag           uint8
+	pesCrcFlag                       uint8
+	pesExtensionFlag                 uint8
+	pesHeaderDataLength              uint8
+	pts                              uint64
+	dts                              uint64
+	escr                             uint32
+	escrBase                         uint64
+	escrExtension                    uint16
+	esRate                           uint32
+	trickModeControl                 uint8
+	fieldID                          uint8
+	intraSliceRefresh                uint8
+	frequencyTruncation              uint8
+	repCntrl                         uint8
+	additionalCopyInfo               uint8
+	previousPesPacketCrc             uint16
+	pesPrivateDataFlag               uint8
+	packHeaderFieldFlag              uint8
+	programPacketSequenceCounterFlag uint8
+	pStdBufferFlag                   uint8
+	pesExtensionFlag2                uint8
+	programPacketSequenceCounter     uint8
+	mpeg1Mpeg2Identifier              uint8
+	originalStuffLength              uint8
+	pStdBufferScale                  uint8
+	pStdBufferSize                   uint16
+	pesExtensionFieldLength          uint8
+
+	data []byte
+}
+
+// NewPes create new PES instance
+func NewPes() *Pes {
+	pes := new(Pes)
+	pes.buf = make([]byte, 0, 65536)
+	return pes
+}
+
+// Initialize Set Params for PES
+func (p *Pes) Initialize(pid uint16, pos int64, prevPcr uint64, prevPcrPos int64) {
+	p.pid = pid
+	p.continuityCounter = 0
+	p.buf = p.buf[0:0]
+	p.pos = pos
+	p.prevPcr = prevPcr
+	p.nextPcr = 0
+	p.prevPcrPos = prevPcrPos
+	p.nextPcrPos = 0
+
+	p.packetStartCodePrefix = 0
+	p.streamID = 0
+	p.pesPacketLength = 0
+	p.pesScramblingControl = 0
+	p.pesPriority = 0
+	p.dataAlignmentIndicator = 0
+	p.copyright = 0
+	p.originalOrCopy = 0
+	p.ptsDtsFlags = 0
+	p.escrFlag = 0
+	p.esRateFlag = 0
+	p.dsmTrickModeFlag = 0
+	p.additionalCopyInfoFlag = 0
+	p.pesCrcFlag = 0
+	p.pesExtensionFlag = 0
+	p.pesHeaderDataLength = 0
+	p.pts = 0
+	p.dts = 0
+	p.escr = 0
+	p.escrBase = 0
+	p.escrExtension = 0
+	p.esRate = 0
+	p.trickModeControl = 0
+	p.fieldID = 0
+	p.intraSliceRefresh = 0
+	p.frequencyTruncation = 0
+	p.repCntrl = 0
+	p.additionalCopyInfo = 0
+	p.previousPesPacketCrc = 0
+	p.pesPrivateDataFlag = 0
+	p.packHeaderFieldFlag = 0
+	p.programPacketSequenceCounterFlag = 0
+	p.pStdBufferFlag = 0
+	p.pesExtensionFlag2 = 0
+	p.programPacketSequenceCounter = 0
+	p.mpeg1Mpeg2Identifier = 0
+	p.originalStuffLength = 0
+	p.pStdBufferScale = 0
+	p.pStdBufferSize = 0
+	p.pesExtensionFieldLength = 0
+}
+
+// ContinuityCounter return current continuity_counter of TsPacket.
+func (p *Pes) ContinuityCounter() uint8 { return p.continuityCounter }
+
+// SetContinuityCounter set current continuity_counter of TsPacket.
+func (p *Pes) SetContinuityCounter(continuityCounter uint8) { p.continuityCounter = continuityCounter }
+
+// Append append ts payload data for buffer.
+func (p *Pes) Append(buf []byte) {
+	p.buf = append(p.buf, buf...)
+}
+
+// Parse PES header.
+func (p *Pes) Parse() error {
+	var bb bitReader
+	if p.newBitReader != nil {
+		bb = p.newBitReader()
+	} else {
+		bb = newDefaultBitReader()
+	}
+	bb.Set(p.buf)
+
+	var err error
+	if p.packetStartCodePrefix, err = bb.ReadUint32(24); err != nil {
+		return errors.Wrap(err, "failed to read pes packet_start_code_prefix")
+	}
+	if p.streamID, err = bb.ReadUint8(8); err != nil {
+		return errors.Wrap(err, "failed to read pes stream_id")
+	}
+	if p.pesPacketLength, err = bb.ReadUint16(16); err != nil {
+		return errors.Wrap(err, "failed to read pes pes_packed_length")
+	}
+	switch p.streamID {
+	case 0xBC, 0xBF, 0xF0, 0xF1, 0xFF, 0xF2, 0xF8:
+		p.data = p.buf[6 : 6+p.pesPacketLength]
+		return nil
+	}
+	if err = bb.Skip(2); err != nil {
+		return errors.Wrap(err, "failed to skip in pes: 10")
+	} // '10'
+	if p.pesScramblingControl, err = bb.ReadUint8(2); err != nil {
+		return errors.Wrap(err, "failed to read pes pes_scrambling_control")
+	}
+	if p.pesPriority, err = bb.ReadUint8(1); err != nil {
+		return errors.Wrap(err, "failed to read pes pes_priority")
+	}
+	if p.dataAlignmentIndicator, err = bb.ReadUint8(1); err != nil {
+		return errors.Wrap(err, "failed to read pes data_alignment_indicator")
+	}
+	if p.copyright, err = bb.ReadUint8(1); err != nil {
+		return errors.Wrap(err, "failed to read pes copyright")
+	}
+	if p.originalOrCopy, err = bb.ReadUint8(1); err != nil {
+		return errors.Wrap(err, "failed to read pes original_or_copy")
+	}
+	if p.ptsDtsFlags, err = bb.ReadUint8(2); err != nil {
+		return errors.Wrap(err, "failed to read pes pts_fts_flag")
+	}
+	if p.escrFlag, err = bb.ReadUint8(1); err != nil {
+		return errors.Wrap(err, "failed to read pes escr_flag")
+	}
+	if p.esRateFlag, err = bb.ReadUint8(1); err != nil {
+		return errors.Wrap(err, "failed to read pes es_rate_flag")
+	}
+	if p.dsmTrickModeFlag, err = bb.ReadUint8(1); err != nil {
+		return errors.Wrap(err, "failed to read pes dsm_trick_mode_flag")
+	}
+	if p.additionalCopyInfoFlag, err = bb.ReadUint8(1); err != nil {
+		return errors.Wrap(err, "failed to read pes additional_copy_info_flag")
+	}
+	if p.pesCrcFlag, err = bb.ReadUint8(1); err != nil {
+		return errors.Wrap(err, "failed to read pes pes_crc_flag")
+	}
+	if p.pesExtensionFlag, err = bb.ReadUint8(1); err != nil {
+		return errors.Wrap(err, "failed to read pes pes_extention_flag")
+	}
+	if p.pesHeaderDataLength, err = bb.ReadUint8(8); err != nil {
+		return errors.Wrap(err, "failed to read pes pes_header_data_length")
+	}
+
+	if p.ptsDtsFlags == 2 {
+		if err = bb.Skip(4); err != nil {
+			return errors.Wrap(err, "failed to skip in pes: 0011 (PtsDtsFlag=2)")
+		} // '0011'
+		var first, second, third uint64
+		if first, err = bb.ReadUint64(3); err != nil {
+			return errors.Wrap(err, "failed to read pes pts first (PtsDtsFlag=2)")
+		}
+		p.pts = first << 30
+		if err = bb.Skip(1); err != nil {
+			return errors.Wrap(err, "failed to skip in pes: first pts marker_bit (PtsDtsFlag=2)")
+		} // marker_bit
+		if second, err = bb.ReadUint64(15); err != nil {
+			return errors.Wrap(err, "failed to read pes pts second (PtsDtsFlag=2)")
+		}
+		p.pts |= second << 15
+		if err = bb.Skip(1); err != nil {
+			return errors.Wrap(err, "failed to skip in pes: second pts marker_bit (PtsDtsFlag=2)")
+		} // marker_bit
+		if third, err = bb.ReadUint64(15); err != nil {
+			return errors.Wrap(err, "failed to read pes pts third (PtsDtsFlag=2)")
+		}
+		p.pts |= third
+		if err = bb.Skip(1); err != nil {
+			return errors.Wrap(err, "failed to skip in pes: third pts marker_bit (PtsDtsFlag=2)")
+		} // marker_bit
+	}
+	if p.ptsDtsFlags == 3 {
+		if err = bb.Skip(4); err != nil {
+			return errors.Wrap(err, "failed to skip in pes: 0011 (PtsDtsFlag=3)")
+		} // '0011'
+		var first, second, third uint64
+		if first, err = bb.ReadUint64(3); err != nil {
+			return errors.Wrap(err, "failed to read pes pts first (PtsDtsFlag=3)")
+		}
+		p.pts = first << 30
+		if err = bb.Skip(1); err != nil {
+			return errors.Wrap(err, "failed to skip in pes: first pts marker_bit (PtsDtsFlag=3)")
+		} // marker_bit
+		if second, err = bb.ReadUint64(15); err != nil {
+			return errors.Wrap(err, "failed to read pes pts second (PtsDtsFlag=3)")
+		}
+		p.pts |= second << 15
+		if err = bb.Skip(1); err != nil {
+			return errors.Wrap(err, "failed to skip in pes: second pts marker_bit (PtsDtsFlag=3)")
+		} // marker_bit
+		if third, err = bb.ReadUint64(15); err != nil {
+			return errors.Wrap(err, "failed to read pes pts third (PtsDtsFlag=3)")
+		}
+		p.pts |= third
+		if err = bb.Skip(1); err != nil {
+			return errors.Wrap(err, "failed to skip in pes: third pts marker_bit (PtsDtsFlag=3)")
+		} // marker_bit
+		if err = bb.Skip(4); err != nil {
+			return errors.Wrap(err, "failed to skip in pes: pts-dts 0001 (PtsDtsFlag=3)")
+		} // '0001'
+		if first, err = bb.ReadUint64(3); err != nil {
+			return errors.Wrap(err, "failed to read pes dts first (PtsDtsFlag=3)")
+		}
+		p.dts = first << 30
+		if err = bb.Skip(1); err != nil {
+			return errors.Wrap(err, "failed to skip in pes: first dts marker_bit (PtsDtsFlag=3)")
+		} // marker_bit
+		if second, err = bb.ReadUint64(15); err != nil {
+			return errors.Wrap(err, "failed to read pes dts second (PtsDtsFlag=3)")
+		}
+		p.dts |= second << 15
+		if err = bb.Skip(1); err != nil {
+			return errors.Wrap(err, "failed to skip in pes: second dts marker_bit (PtsDtsFlag=3)")
+		} // marker_bit
+		if third, err = bb.ReadUint64(15); err != nil {
+			return errors.Wrap(err, "failed to read pes dts third (PtsDtsFlag=3)")
+		}
+		p.dts |= third
+		if err = bb.Skip(1); err != nil {
+			return errors.Wrap(err, "failed to skip in pes: third dts marker_bit (PtsDtsFlag=3)")
+		} // marker_bit
+	}
+	if p.escrFlag == 1 {
+		if err = bb.Skip(2); err != nil {
+			return errors.Wrap(err, "failed to skip in pes: reserved(EscrFlag=1)")
+		} // reserved
+		var first, second, third uint64
+		if first, err = bb.ReadUint64(3); err != nil {
+			return errors.Wrap(err, "failed to read pes escr first")
+		}
+		p.escrBase = first << 30
+		if err = bb.Skip(1); err != nil {
+			return errors.Wrap(err, "failed to skip in pes: first ercr marker_bit")
+		} // marker_bit
+		if second, err = bb.ReadUint64(15); err != nil {
+			return errors.Wrap(err, "failed to read pes escr second")
+		}
+		p.escrBase |= second << 15
+		if err = bb.Skip(1); err != nil {
+			return errors.Wrap(err, "failed to skip in pes: second ercr marker_bit")
+		} // marker_bit
+		if third, err = bb.ReadUint64(15); err != nil {
+			return errors.Wrap(err, "failed to read pes escr third")
+		}
+		p.escrBase |= third
+	}
+	if p.esRateFlag == 1 {
+		if err = bb.Skip(1); err != nil {
+			return errors.Wrap(err, "failed to skip in pes: first es_rate marker_bit")
+		} // marker_bit
+		if p.esRate, err = bb.ReadUint32(22); err != nil {
+			return errors.Wrap(err, "failed to read pes es_rate")
+		}
+		if err = bb.Skip(1); err != nil {
+			return errors.Wrap(err, "failed to skip in pes: second es_rate marker_bit")
+		} // marker_bit
+	}
+	if p.dsmTrickModeFlag == 1 {
+		if p.trickModeControl, err = bb.ReadUint8(3); err != nil {
+			return errors.Wrap(err, "failed to read pes trick_mode_control")
+		}
+		switch p.trickModeControl {
+		case 0x00, 0x03: // fast_forward, freeze_frame
+			if p.fieldID, err = bb.ReadUint8(2); err != nil {
+				return errors.Wrap(err, "failed to read pes field_id")
+			}
+			if p.intraSliceRefresh, err = bb.ReadUint8(1); err != nil {
+				return errors.Wrap(err, "failed to read pes intra_slice_refresh")
+			}
+			if p.frequencyTruncation, err = bb.ReadUint8(2); err != nil {
+				return errors.Wrap(err, "failed to read pes frequency_truncation")
+			}
+		case 0x01: // slow_motion, slow_reverse
+			if p.repCntrl, err = bb.ReadUint8(5); err != nil {
+				return errors.Wrap(err, "failed to read pes rep_cntrl")
+			}
+		default:
+			if err = bb.Skip(5); err != nil {
+				return errors.Wrap(err, "failed to skip in pes: dsm_trick_mode reserved")
+			} // reserved
+		}
+	}
+	if p.additionalCopyInfoFlag == 1 {
+		if err = bb.Skip(1); err != nil {
+			return errors.Wrap(err, "failed to skip in pes: additional_copy_info marker_bit")
+		} // marker_bit
+		if p.additionalCopyInfo, err = bb.ReadUint8(7); err != nil {
+			return errors.Wrap(err, "failed to read pes additional_copy_info")
+		}
+	}
+	if p.pesCrcFlag == 1 {
+		if p.previousPesPacketCrc, err = bb.ReadUint16(16); err != nil {
+			return errors.Wrap(err, "failed to read pes previous_pes_packet_crc")
+		}
+	}
+	return nil
+}
+
+// DumpTimestamp dump PTS and DTS
+func (p *Pes) DumpTimestamp() float64 {
+	var pcrDelay float64
+	if p.ptsDtsFlags == 2 {
+		if p.nextPcrPos != p.prevPcrPos {
+			prevPcr := float64(p.prevPcr) / 300 / 90
+			nextPcr := float64(p.nextPcr) / 300 / 90
+			pcrDelay = float64(p.pts)/90 - (prevPcr + (nextPcr-prevPcr)*(float64(p.pos-p.prevPcrPos)/float64(p.nextPcrPos-p.prevPcrPos)))
+			fmt.Printf("0x%08x PTS: 0x%08x[%012fms] (pid:0x%02x) (delay:%fms)\n", p.pos, p.pts, float64(p.pts)/90, p.pid, pcrDelay)
+		} else {
+			fmt.Printf("0x%08x PTS: 0x%08x[%012fms] (pid:0x%02x)\n", p.pos, p.pts, float64(p.pts)/90, p.pid)
+		}
+	}
+	if p.ptsDtsFlags == 3 {
+		if p.nextPcrPos != p.prevPcrPos {
+			prevPcr := float64(p.prevPcr) / 300 / 90
+			nextPcr := float64(p.nextPcr) / 300 / 90
+			pcrDelay = float64(p.dts)/90 - (prevPcr + (nextPcr-prevPcr)*(float64(p.pos-p.prevPcrPos)/float64(p.nextPcrPos-p.prevPcrPos)))
+			fmt.Printf("0x%08x DTS: 0x%08x[%012fms] (pid:0x%02x) (delay:%fms)\n", p.pos, p.dts, float64(p.dts)/90, p.pid, pcrDelay)
+		} else {
+			fmt.Printf("0x%08x DTS: 0x%08x[%012fms] (pid:0x%02x)\n", p.pos, p.dts, float64(p.dts)/90, p.pid)
+		}
+	}
+	return pcrDelay
+}
+
+// Dump PES header detail.
+func (p *Pes) DumpHeader() {
+	fmt.Printf("\n===========================================\n")
+	fmt.Printf(" PES")
+	fmt.Printf("\n===========================================\n")
+	fmt.Printf("PES : packet_start_code_prefix			: %d\n", p.packetStartCodePrefix)
+	fmt.Printf("PES : stream_id					: %d\n", p.streamID)
+	fmt.Printf("PES : pes_packet_length				: %d\n", p.pesPacketLength)
+	fmt.Printf("PES : pes_scrambling_control			: %d\n", p.pesScramblingControl)
+	fmt.Printf("PES : pes_priority				: %d\n", p.pesPriority)
+	fmt.Printf("PES : data_alignment_indicator			: %d\n", p.dataAlignmentIndicator)
+	fmt.Printf("PES : copyright					: %d\n", p.copyright)
+	fmt.Printf("PES : original_or_copy				: %d\n", p.originalOrCopy)
+	fmt.Printf("PES : pts_dts_flags				: %d\n", p.ptsDtsFlags)
+	fmt.Printf("PES : escr_flag					: %d\n", p.escrFlag)
+	fmt.Printf("PES : es_rate_flag				: %d\n", p.esRateFlag)
+	fmt.Printf("PES : dsm_trick_mode_flag			: %d\n", p.dsmTrickModeFlag)
+	fmt.Printf("PES : additional_copy_info_flag			: %d\n", p.additionalCopyInfoFlag)
+	fmt.Printf("PES : pes_crc_flag				: %d\n", p.pesCrcFlag)
+	fmt.Printf("PES : pes_extention_flag			: %d\n", p.pesExtensionFlag)
+	fmt.Printf("PES : pes_header_data_length			: %d\n", p.pesHeaderDataLength)
+	fmt.Printf("PES : pts					: %d\n", p.pts)
+	fmt.Printf("PES : dts					: %d\n", p.dts)
+	fmt.Printf("PES : escr					: %d\n", p.escr)
+	fmt.Printf("PES : escr_base					: %d\n", p.escrBase)
+	fmt.Printf("PES : escr_extention				: %d\n", p.escrExtension)
+	fmt.Printf("PES : es_rate					: %d\n", p.esRate)
+	fmt.Printf("PES : trick_mode_control			: %d\n", p.trickModeControl)
+	fmt.Printf("PES : field_id					: %d\n", p.fieldID)
+	fmt.Printf("PES : intra_slice_refresh			: %d\n", p.intraSliceRefresh)
+	fmt.Printf("PES : frequency_truncation			: %d\n", p.frequencyTruncation)
+	fmt.Printf("PES : rep_cntrl					: %d\n", p.repCntrl)
+	fmt.Printf("PES : additional_copy_info			: %d\n", p.additionalCopyInfo)
+	fmt.Printf("PES : previous_pes_packet_crc			: %d\n", p.previousPesPacketCrc)
+	fmt.Printf("PES : pes_private_data_flag			: %d\n", p.pesPrivateDataFlag)
+	fmt.Printf("PES : pack_header_field_flag			: %d\n", p.packHeaderFieldFlag)
+	fmt.Printf("PES : program_packet_sequence_counter_flag	: %d\n", p.programPacketSequenceCounterFlag)
+	fmt.Printf("PES : p-std_buffer_flag				: %d\n", p.pStdBufferFlag)
+	fmt.Printf("PES : pes_extention_flag2			: %d\n", p.pesExtensionFlag2)
+	fmt.Printf("PES : program_packet_sequence_counter		: %d\n", p.programPacketSequenceCounter)
+	fmt.Printf("PES : mpeg1_mpeg2_identifer			: %d\n", p.mpeg1Mpeg2Identifier)
+	fmt.Printf("PES : original_stuff_length			: %d\n", p.originalStuffLength)
+	fmt.Printf("PES : p-std_buffer_scale			: %d\n", p.pStdBufferScale)
+	fmt.Printf("PES : p-std_buffer_size				: %d\n", p.pStdBufferSize)
+	fmt.Printf("PES : pes_extention_field_length		: %d\n", p.pesExtensionFieldLength)
+}

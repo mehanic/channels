@@ -1,0 +1,21 @@
+version: '3.8'
+
+services:
+  rtmp-server:
+    build: .
+    ports:
+      - "1935:1935"
+      - "8080:8080"
+      - "9090:9090"
+    volumes:
+      - ./hls:/app/hls
+      - ./config.yaml:/app/config.yaml
+    environment:
+      - TZ=UTC
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s 

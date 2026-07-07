@@ -1,0 +1,10 @@
+.idea/
+vendor/
+*.mp4
+*.mpg
+*.mp3
+build/*.mp4
+build/converter.exe
+build/converter
+build/converter-m1
+converter.zip
